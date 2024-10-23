@@ -131,15 +131,22 @@ def compute_thermal_0D(titan, options):
         if assembly.ablation_mode != '0d': continue
 
         for obj in assembly.objects:
-
+            #print(obj)
             facet_area = np.linalg.norm(obj.mesh.facet_normal, ord = 2, axis = 1)
             heatflux = assembly.aerothermo.heatflux[obj.facet_index]
-            Qin = np.sum(heatflux*facet_area)
+            try:
+                Qin=np.sum(heatflux*facet_area)
+            except:
+                #print('Heat flux error on',obj.name,'!')
+                Qin=0
+                for i, q in enumerate(heatflux):
+                        Qin+=q*facet_area[i]
             
             cp  = obj.material.specificHeatCapacity(obj.temperature)
             emissivity = obj.material.emissivity(obj.temperature)
 
             Atot = np.sum(facet_area)
+            #Qin = Atot*np.sum(heatflux)
 
             # Estimating the radiation heat-flux
             Qrad = 5.670373e-8*emissivity*(obj.temperature**4 - Tref**4)*Atot

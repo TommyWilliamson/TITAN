@@ -21,8 +21,7 @@ from Freestream.atmosphere import load_atmosphere, retrieve_atmosphere_data
 from Freestream.mix_mpp import mixture_mpp
 from Freestream import gram
 import numpy as np
-from scipy.interpolate import interp1d
-
+from scipy.interpolate import interp1d, PchipInterpolator
 #Hard sphere model
 def compute_percent_mole(species_index, percent_mass):
 
@@ -235,6 +234,7 @@ def compute_freestream( model, altitude, velocity, lref, freestream, assembly, o
 
     data, species_index = retrieve_atmosphere_data(model, altitude, assembly, options)
 
+
     temperature = data[1]
     density = data[2:]
 
@@ -252,8 +252,8 @@ def compute_freestream( model, altitude, velocity, lref, freestream, assembly, o
     if options.freestream.method.lower() == "mutationpp":
 
         mix = mixture_mpp(species = species_index, temperature = temperature, density = density)
-        
         freestream.percent_mole = mix.X()
+        freestream.percent_mass = mix.Y()
         freestream.percent_mole.shape = (1,-1)
         freestream.pressure = mix.P()
         freestream.R = mix.P()/(mix.density()*mix.T())
@@ -265,7 +265,6 @@ def compute_freestream( model, altitude, velocity, lref, freestream, assembly, o
         freestream.mach = freestream.velocity/freestream.sound
 
         m_mean = mix.mixtureMw()/avo
-
         k = 2.64638e-3*freestream.temperature**1.5/(freestream.temperature+245*10**(-12/freestream.temperature))
         freestream.prandtl = freestream.mu*freestream.cp/k
 
@@ -282,7 +281,6 @@ def compute_freestream( model, altitude, velocity, lref, freestream, assembly, o
         m_mean = (compute_mass_mean(species_index = freestream.species_index, percent_gas = freestream.percent_mole)/avo)[0]
 
         freestream.mach = freestream.velocity/freestream.sound
-
         k = 2.64638e-3*freestream.temperature**1.5/(freestream.temperature+245*10**(-12/freestream.temperature))
         freestream.prandtl = freestream.mu*freestream.cp/k
 
@@ -320,6 +318,7 @@ def compute_freestream( model, altitude, velocity, lref, freestream, assembly, o
     
         freestream.mfp = C1/freestream.density
         freestream.knudsen = freestream.mfp/lref
+
     
 def compute_stagnation(free, options):
     """
@@ -350,13 +349,16 @@ def compute_stagnation(free, options):
     elif options.method == "Standard":
         free.mu_s = compute_sutherland(species_index = free.species_index, percent_gas = free.percent_mole, temperature = free.T1_s)
 
-def interpolate_atmosphere_knudsen(name, lref, altitude):
+def interpolate_atmosphere_knudsen(name, lref, altitude, options):
 
     avo = 6.0221408E+23 
 
     #This is only possible for the NRLSMISE00 at the moment
-    f_values, species_index = load_atmosphere(name = name)
 
+    if name.upper()=="NRLMSISE00":
+        f_values, species_index = load_atmosphere(name = name,options=options)
+    else:
+        _, species_index, f_values = gram.read_gram_species(altitude=altitude[0], options=options)
     data = f_values(altitude)
     
     temperature = data[:,1]
@@ -373,8 +375,8 @@ def interpolate_atmosphere_knudsen(name, lref, altitude):
     C1 = 2*C0/(15*np.sqrt(2*np.pi*R))*(5-2*omega_mean)*(7-2*omega_mean)
 
     mfp = C1/np.sum(density, axis = 1)
-    knudsen = mfp/lref
+    knudsen, i_unique = np.unique(mfp/lref, return_index=True)
 
-    f=interp1d(knudsen, altitude, kind = 'cubic')
+    f=PchipInterpolator(knudsen, altitude[np.sort(i_unique)], axis=0, extrapolate=True)
 
     return f

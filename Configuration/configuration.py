@@ -24,7 +24,10 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import shutil
-import pickle
+try: # Joblib is a dropin replacement for pickle with better behaviour for large files
+    import joblib as pickle
+except:
+    import pickle
 import copy
 from Geometry import component as Component
 from Geometry import assembly as Assembly
@@ -285,6 +288,28 @@ class GRAM():
         self.spicePath = ''
         self.MinMaxFactor = 0.0
         self.ComputeMinMaxFactor  = 1
+class QoI():
+    def __init__(self,filepath = 'QoI.pkl',flag = 0):
+        # Objects as st
+        self.objects = ''
+        self.outputs = ''
+        self.stls = []
+        self.quantities = {}
+        self.filepath = filepath
+        self.flag = flag
+    
+    def build_quantities(self, path):
+        self.outputs = [name.strip() for name in self.outputs.split(',')] if not self.outputs=='demise_points' else ['Latitude','Longitude','Altitude']
+        self.objects = [name.strip() for name in self.objects.split(',')]
+        for i_obj, obj in enumerate(self.objects):
+            self.stls.append(path+obj)
+            self.objects[i_obj] = obj.rsplit( ".", 1 )[ 0 ]
+            self.quantities[self.stls[i_obj]] = {output : [] for output in self.outputs}
+        filepath = self.filepath
+        if not os.path.exists(filepath):
+            with open(filepath,'wb') as file: 
+                pickle.dump(self.quantities, file)
+
             
 
 class Options():
@@ -321,6 +346,9 @@ class Options():
         self.freestream = Freestream()
 
         self.planet = planet.ModelPlanet("Earth")
+
+        self.qoi = QoI()
+
         self.vehicle = None
         
         #: [int] Number of dynamic iterations
@@ -434,7 +462,6 @@ class Options():
         infile = open(self.output_folder + '/Restart/'+ 'Mesh.p','rb')
         titan = pickle.load(infile)
         infile.close()
-
         return titan
 
     def read_state(self, i = 0):
@@ -728,6 +755,13 @@ def read_config_file(configParser, postprocess = ""):
     options.material_file  = get_config_value(configParser, 'database_material.xml', 'Options', 'Material_file', 'str')
     options.time_counter   = 0
 
+    options.write_solutions     = get_config_value(configParser, True, 'Options', 'Write_solutions', 'boolean')
+    options.wrap_propagator = get_config_value(configParser,False,'Time','Wrap_propagator','boolean')
+
+    if options.wrap_propagator:
+        from Uncertainty.UT import setupUT
+        options=setupUT(options)
+
     #Read FENICS options
     if options.structural_dynamics:
         options.fenics.E            = get_config_value(configParser, options.fenics.E, 'FENICS', 'E', 'float')
@@ -765,6 +799,10 @@ def read_config_file(configParser, postprocess = ""):
         options.gram.spicePath = get_config_value(configParser, options.gram.MinMaxFactor, 'GRAM', 'SPICE_Path', 'str') 
         options.gram.MinMaxFactor = get_config_value(configParser, options.gram.MinMaxFactor, 'GRAM', 'MinMaxFactor', 'str')
         options.gram.ComputeMinMaxFactor = get_config_value(configParser, options.gram.ComputeMinMaxFactor, 'GRAM', 'ComputeMinMaxFactor', 'str')
+        options.gram.Uncertain = get_config_value(configParser, False, 'GRAM','Uncertain', 'boolean')
+        options.gram.Seed = get_config_value(configParser, 'Auto', 'GRAM','Seed', 'str')
+        options.gram.isPerturbed = 0
+        options.gram.wind = get_config_value(configParser, False, 'GRAM','Use_wind', 'boolean')
 
     #Read Planet
     options.planet = planet.ModelPlanet(get_config_value(configParser, "Earth", 'Model', 'Planet', 'str'))
@@ -840,6 +878,14 @@ def read_config_file(configParser, postprocess = ""):
 
     options.create_output_folders()
 
+    # Quantities of interest for uncertainty propagation
+    if configParser.has_section('QoI'): 
+        options.qoi.flag = True
+        options.qoi.objects = get_config_value(configParser, options.qoi.objects, 'QoI', 'Objects', 'str')
+        options.qoi.outputs = get_config_value(configParser, options.qoi.outputs, 'QoI', 'Outputs', 'str')
+        options.qoi.filepath = options.output_folder +'/Data/'+ options.qoi.filepath
+        options.qoi.build_quantities(get_config_value(configParser, '', 'Assembly', 'Path', 'str'))
+    
     if options.load_state:
         titan = options.read_state()
 
@@ -868,6 +914,10 @@ def read_config_file(configParser, postprocess = ""):
             assembly.trajectory = copy.deepcopy(trajectory)
             dynamics.compute_quaternion(assembly)
             dynamics.compute_cartesian(assembly, options)
+
+            if options.wrap_propagator:
+                from Uncertainty.UT import setupAssembly
+                setupAssembly(assembly,options)
             
         #Reads the Initial pitch/yaw/roll 
         read_initial_conditions(titan, options, configParser)

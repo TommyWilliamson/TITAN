@@ -22,6 +22,7 @@ from Geometry import gmsh_api as GMSH
 from Geometry.tetra import inertia_tetra, vol_tetra
 import numpy as np
 from copy import deepcopy
+import resource, sys
 
 def create_assembly_flag(list_bodies, Flags):
     """
@@ -37,7 +38,7 @@ def create_assembly_flag(list_bodies, Flags):
         array containing the used-defined components
     Flags: np.array
         numpy array containing the linkage information of each component
-
+assembly
     Returns
     -------
     assembly_flag: np.array
@@ -448,6 +449,8 @@ class Assembly():
         else: raise ValueError("ablation mode has to be Tetra or 0D")
 
 
+
+
     def generate_inner_domain(self, write = False, output_folder = '', output_filename = '', bc_ids = []):
         """
         Generates the 3D structural mesh
@@ -561,6 +564,9 @@ class Assembly():
 
 def copy_assembly(list_assemblies, options):
     from copy import deepcopy
+
+    resource.setrlimit(resource.RLIMIT_STACK, [0x10000000, resource.RLIM_INFINITY])
+    sys.setrecursionlimit(268435000)
 
     if options.collision.flag:
         for assembly in list_assemblies:

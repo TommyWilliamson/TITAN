@@ -101,7 +101,8 @@ def write_output_data(titan, options):
         df['Pressure'] = [assembly.freestream.pressure]
         df['SpecificHeatRatio'] = [assembly.freestream.gamma]
 
-        for specie, pct in zip(assembly.freestream.species_index, assembly.freestream.percent_mass[0]) :
+        pct_mass =assembly.freestream.percent_mass if options.freestream.method == "Mutationpp" else assembly.freestream.percent_mass[0]
+        for specie, pct in zip(assembly.freestream.species_index, pct_mass) :
             df[specie+"_mass_pct"] = [pct]
 
         #Stagnation properties
@@ -190,6 +191,12 @@ def generate_surface_solution(titan, options):
 
         vol_mesh_filepath = f"{folder_path}/solution_iter_{str(titan.iter).zfill(3)}.xdmf"
         meshio.write(vol_mesh_filepath, trimesh, file_format="xdmf")
+        # previousiter = titan.iter -2
+        # if os.path.exists(f"{folder_path}/solution_iter_{str(previousiter).zfill(3)}.xdmf"):
+        #     xdmf_path = Path(f"{folder_path}/solution_iter_{str(previousiter).zfill(3)}.xdmf")
+        #     h5_path = Path(f"{folder_path}/solution_iter_{str(previousiter).zfill(3)}.h5")
+        #     xdmf_path.unlink()
+        #     h5_path.unlink()
 
 #Generate volume for FENICS
 def generate_volume(titan, options):

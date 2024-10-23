@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+    paths:
+    - "**.py"
+    - .github/workflows/ci.yml
+    - "!scripts/**"
+
+jobs:
+
+  full:
+    runs-on: ${{ matrix.os }}
+
+    name: ${{ matrix.os }} Python ${{ matrix.python-version }}
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        os: [ubuntu-latest]
+        include:
+        - os: macos-latest
+          python-version: '3.12'
+        - os: windows-latest
+          python-version: '3.12'
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - run: pip install .[full,tests,lint]
+
+    - run: flake8
+
+    - run: mypy
+      if: ${{ matrix.python-version >= '3.9' }}
+
+    - run: pytest
+
+  coverage:
+    runs-on: ubuntu-latest
+    name: Python ${{ matrix.python-version }}
+
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install tests and lint dependencies
+        run: pip install -e .[tests,coverage]
+
+      - name: Collect coverage without NumPy
+        run: pytest --cov=src --cov-report=xml
+
+      - name: Install NumPy
+        run: pip install -e .[core]
+
+      - name: Collect coverage with NumPy
+        run: pytest --cov=src --cov-report=xml --cov-append
+
+      # - name: Install full dependencies
+      #   run: pip install -e .[full]
+      # - name: Test with full dependencies and collect coverage
+      #   run: pytest --cov=src --cov-report=xml --cov-append
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          name: Python ${{ matrix.python-version }}

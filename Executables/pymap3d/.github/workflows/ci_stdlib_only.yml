@@ -1,0 +1,34 @@
+name: ci_stdlib_only
+
+on:
+  push:
+    paths:
+    - "**.py"
+    - .github/workflows/ci_stdlib_only.yml
+    - "!scripts/**"
+
+jobs:
+
+  stdlib_only:
+    runs-on: ${{ matrix.os }}
+
+    name: ${{ matrix.os }} Python ${{ matrix.python-version }}
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        os: ['ubuntu-latest']
+        include:
+        - os: macos-latest
+          python-version: '3.12'
+        - os: windows-latest
+          python-version: '3.12'
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - run: pip install .[tests]
+
+    - run: pytest

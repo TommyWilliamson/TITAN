@@ -19,6 +19,7 @@
 #
 import gmsh
 import numpy as np
+import threading
 
 def mesh_Settings(gmsh):
     gmsh.option.setNumber("General.Terminal", 0)
@@ -27,8 +28,8 @@ def mesh_Settings(gmsh):
     #self.gmsh.option.setNumber("Mesh.Algorithm", 8);
     #self.gmsh.option.setNumber("Mesh.CharacteristicLengthMin", 1);
     #self.gmsh.option.setNumber("Mesh.CharacteristicLengthMax", 2);
-    #self.gmsh.option.setNumber("Mesh.Optimize",1)
-    #self.gmsh.option.setNumber("Mesh.QualityType",2);
+    gmsh.option.setNumber("Mesh.Optimize",1)
+    gmsh.option.setNumber("Mesh.QualityType",2);
 
 def generate_inner_domain(mesh, assembly = [], write = False, output_folder = '', output_filename = '', bc_ids = []):
     gmsh.initialize()
@@ -98,6 +99,7 @@ def generate_inner_domain(mesh, assembly = [], write = False, output_folder = ''
     #assembly.map_physical_volume = map_objects
 
     gmsh.model.geo.synchronize()
+    gmsh.write("inner.geo_unrolled")
     gmsh.model.mesh.generate(3)
 
     if False:
@@ -172,13 +174,25 @@ def object_grid(gmsh, nodes, edges, facet_edges, ref, node_ref = 1, edge_ref = 1
         surf_ref +=1
 
     return node_ref, edge_ref, surf_ref
+# Launch the GUI and handle the "check" event (recorded in the "ONELAB/Action"
+# parameter) to recreate the geometry with a new twisting angle if necessary:
+def checkForEvent():
+    print('in event checker')
+    action = gmsh.onelab.getString("ONELAB/Action")
+    if len(action) and action[0] == "check":
+        print('in action')
+        gmsh.onelab.setString("ONELAB/Action", [""])
+    gmsh.graphics.draw()
+    return True
+
 
 def generate_cfd_domain(assembly, dim, ref_size_surf = 1.0, ref_size_far = 1.0, output_folder = '', output_grid = 'Grid.su2', options = None):
 
-    print("Generating CFD Mesh")
 
     gmsh.initialize()
     mesh_Settings(gmsh)
+
+    # flag that will be set to interrupt a calculation
 
     ref = ref_size_surf
     ref2 = ref_size_far
@@ -212,15 +226,14 @@ def generate_cfd_domain(assembly, dim, ref_size_surf = 1.0, ref_size_far = 1.0, 
     outer_surface(gmsh,ref2, surf_ref-1, xmin, xmax, ref_phys_surface, options = None)
     
     gmsh.model.geo.synchronize()
+    gmsh.write("unmeshed.geo_unrolled")
+    # while gmsh.fltk.isAvailable() and checkForEvent():
+    #     gmsh.fltk.wait()
 
-    if False:
-        gmsh.fltk.initialize()
-        while gmsh.fltk.isAvailable() and checkForEvent():
-            gmsh.fltk.wait()
+
 
     gmsh.model.mesh.generate(dim)
-
-    #gmsh.model.mesh.generate(2)
+    gmsh.write("meshed.geo_unrolled")
     #gmsh.write(output_folder+'/CFD_Grid/'+'a.vtk')
     gmsh.write(output_folder+'/CFD_Grid/'+output_grid)
     gmsh.finalize()
